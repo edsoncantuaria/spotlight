@@ -1,6 +1,6 @@
 [package]
 name = "spotlight"
-version = "1.0.0"
+version = "1.0.1"
 description = "Launcher estilo Spotlight para Linux"
 authors = ["edsoncantuaria"]
 edition = "2021"

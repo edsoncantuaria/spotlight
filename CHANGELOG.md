@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1] - 2026-06-18
+
+### Corrigido
+- Autostart (`~/.config/autostart/spotlight.desktop`) passa a sincronizar o `Exec` com o binário instalado (corrige falha após migrar de build dev para `.deb`)
+- Atalho padrão reduzido a `Ctrl+Alt+Space` — `Super+Space` removido por conflitar com troca de idioma no GNOME
+- Aviso no log quando `Super+Space` estiver configurado manualmente
+
 ## [1.0.0] - 2026-06-17
 
 ### Adicionado
@@ -19,4 +26,5 @@
 - Extensão AI desabilitada por padrão (sem API key necessária)
 - Testado em Ubuntu/Debian; Wayland e X11 com dependências opcionais
 
+[1.0.1]: https://github.com/edsoncantuaria/spotlight/releases/tag/v1.0.1
 [1.0.0]: https://github.com/edsoncantuaria/spotlight/releases/tag/v1.0.0

@@ -15,6 +15,7 @@ Baixe o `.deb` ou `.AppImage` na [página de Releases](https://github.com/edsonc
 # .deb (Ubuntu/Debian)
 sudo dpkg -i spotlight_*_amd64.deb
 sudo apt-get install -f
+spotlight   # inicia em segundo plano; depois use Ctrl+Alt+Space
 
 # AppImage
 chmod +x spotlight_*_amd64.AppImage
@@ -61,7 +62,7 @@ npm run tauri build
 
 | Tecla | Ação |
 |-------|------|
-| `Ctrl+Alt+Space` | Abrir/fechar Spotlight |
+| `Ctrl+Alt+Space` | Abrir/fechar Spotlight (padrão; evite `Super+Space` no GNOME) |
 | `Ctrl+Alt+C` | Área de transferência |
 | `Ctrl+P` | Fixar item (clipboard) |
 | `Shift+Enter` | Adicionar ao paste stack |

@@ -84,10 +84,7 @@ fn default_clipboard_shortcut() -> String {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            shortcuts: vec![
-                "Ctrl+Alt+Space".to_string(),
-                "Super+Space".to_string(),
-            ],
+            shortcuts: vec!["Ctrl+Alt+Space".to_string()],
             clipboard_shortcut: default_clipboard_shortcut(),
             web_search_engine: default_web_search_engine(),
             theme: default_theme(),
@@ -169,14 +166,18 @@ pub fn ensure_autostart() -> Result<(), String> {
     fs::create_dir_all(&autostart_dir).map_err(|e| e.to_string())?;
 
     let desktop = autostart_dir.join("spotlight.desktop");
-    if desktop.exists() {
-        return Ok(());
-    }
-
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let content = format!(
-        "[Desktop Entry]\nType=Application\nName=Spotlight\nExec={}\nHidden=false\nNoDisplay=false\nX-GNOME-Autostart-enabled=true\n",
+        "[Desktop Entry]\nType=Application\nName=Spotlight\nExec={}\nHidden=false\nNoDisplay=false\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
         exe.display()
     );
-    fs::write(desktop, content).map_err(|e| e.to_string())
+
+    let needs_write = match fs::read_to_string(&desktop) {
+        Ok(existing) => existing != content,
+        Err(_) => true,
+    };
+    if needs_write {
+        fs::write(desktop, content).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }

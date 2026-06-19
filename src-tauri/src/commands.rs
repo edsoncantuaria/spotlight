@@ -491,6 +491,12 @@ pub fn setup_global_shortcut(app: &AppHandle) -> Result<(), Box<dyn std::error::
         }) {
             Ok(()) => {
                 eprintln!("[spotlight] Atalho registrado: {key}");
+                if key.eq_ignore_ascii_case("Super+Space") {
+                    eprintln!(
+                        "[spotlight] AVISO: Super+Space conflita com troca de idioma no GNOME \
+                         (<Super>space). Use Ctrl+Alt+Space ou altere em Configurações."
+                    );
+                }
                 any_registered = true;
             }
             Err(e) => eprintln!(
