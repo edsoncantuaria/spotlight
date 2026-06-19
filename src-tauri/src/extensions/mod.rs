@@ -76,20 +76,25 @@ impl ExtensionRegistry {
         user::write_example_extension();
         let mut providers: Vec<Box<dyn SearchProvider>> = Vec::new();
         let mut infos = Vec::new();
+        let disabled = crate::config::load().disabled_extensions;
 
         for p in builtin::all_builtin() {
+            let id = p.id().to_string();
+            let enabled = !disabled.iter().any(|d| d == &id);
             infos.push(ExtensionInfo {
-                id: p.id().to_string(),
+                id: id.clone(),
                 title: p.title().to_string(),
                 icon: Some("applications-other".to_string()),
                 keywords: p.keywords().to_vec(),
-                enabled: true,
+                enabled,
                 builtin: true,
             });
-            providers.push(p);
+            if enabled {
+                providers.push(p);
+            }
         }
 
-        for (m, dir) in user::load_user_providers() {
+        for (m, dir) in user::load_all_user_extensions() {
             infos.push(ExtensionInfo {
                 id: m.id.clone(),
                 title: m.title.clone(),
@@ -98,7 +103,9 @@ impl ExtensionRegistry {
                 enabled: m.enabled,
                 builtin: false,
             });
-            providers.push(Box::new(user::UserScriptExtension::new(m, dir)));
+            if m.enabled {
+                providers.push(Box::new(user::UserScriptExtension::new(m, dir)));
+            }
         }
 
         if let Ok(mut p) = self.providers.write() {
@@ -113,6 +120,51 @@ impl ExtensionRegistry {
         self.manifests.read().map(|m| m.clone()).unwrap_or_default()
     }
 
+    pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), String> {
+        let is_builtin = self
+            .manifests
+            .read()
+            .map(|m| m.iter().any(|e| e.builtin && e.id == id))
+            .unwrap_or(false);
+
+        if is_builtin {
+            let mut config = crate::config::load();
+            if enabled {
+                config.disabled_extensions.retain(|x| x != id);
+            } else if !config.disabled_extensions.iter().any(|x| x == id) {
+                config.disabled_extensions.push(id.to_string());
+            }
+            crate::config::save(&config)?;
+            self.reload();
+            return Ok(());
+        }
+
+        user::set_user_extension_enabled(id, enabled)?;
+        self.reload();
+        Ok(())
+    }
+
+    fn should_search_provider(
+        provider: &dyn SearchProvider,
+        query: &str,
+        root_keyword: Option<&str>,
+    ) -> bool {
+        if let Some(kw) = root_keyword {
+            return provider.keywords().iter().any(|k| k == kw) || provider.id() == kw;
+        }
+        if query.len() < 2 {
+            return false;
+        }
+        let q = query.to_lowercase();
+        if provider.id().eq_ignore_ascii_case(&q) {
+            return true;
+        }
+        provider.keywords().iter().any(|k| {
+            let kl = k.to_lowercase();
+            q.contains(&kl) || kl.starts_with(&q)
+        })
+    }
+
     pub fn search_all(
         &self,
         query: &str,
@@ -120,12 +172,6 @@ impl ExtensionRegistry {
         limit: usize,
         root_keyword: Option<&str>,
     ) -> Vec<crate::search::types::SearchResult> {
-        let providers = match self.providers.read() {
-            Ok(p) => p.iter().map(|_| ()).collect::<Vec<_>>(),
-            Err(_) => return Vec::new(),
-        };
-        drop(providers);
-
         let providers = self.providers.read().ok();
         let Some(providers) = providers else {
             return Vec::new();
@@ -133,10 +179,8 @@ impl ExtensionRegistry {
 
         let mut all = Vec::new();
         for provider in providers.iter() {
-            if let Some(kw) = root_keyword {
-                if !provider.keywords().iter().any(|k| k == kw) && provider.id() != kw {
-                    continue;
-                }
+            if !Self::should_search_provider(provider.as_ref(), query, root_keyword) {
+                continue;
             }
             all.extend(provider.search(query, history, limit));
         }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use crate::paths;
@@ -40,6 +40,8 @@ pub struct AppConfig {
     pub extension_store_url: Option<String>,
     #[serde(default = "default_launch_at_login")]
     pub launch_at_login: bool,
+    #[serde(default)]
+    pub disabled_extensions: Vec<String>,
 }
 
 fn default_theme() -> String {
@@ -107,6 +109,7 @@ impl Default for AppConfig {
             ai_api_url: None,
             extension_store_url: None,
             launch_at_login: default_launch_at_login(),
+            disabled_extensions: Vec::new(),
         }
     }
 }
@@ -173,7 +176,25 @@ pub fn sync_autostart() -> Result<(), String> {
     }
 }
 
+fn autostart_user_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("autostart").join("spotlight.desktop"))
+}
+
+const AUTOSTART_DISABLE: &str = "[Desktop Entry]\nType=Application\nName=Spotlight\nHidden=true\nX-GNOME-Autostart-enabled=false\n";
+
 fn enable_autostart() -> Result<(), String> {
+    if Path::new("/etc/xdg/autostart/spotlight.desktop").exists() {
+        if let Some(user) = autostart_user_path() {
+            if user.exists() {
+                let content = fs::read_to_string(&user).unwrap_or_default();
+                if content.contains("Hidden=true") {
+                    fs::remove_file(&user).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        return Ok(());
+    }
+
     let Some(config_dir) = dirs::config_dir() else {
         return Ok(());
     };
@@ -183,7 +204,18 @@ fn enable_autostart() -> Result<(), String> {
     let desktop = autostart_dir.join("spotlight.desktop");
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let content = format!(
-        "[Desktop Entry]\nType=Application\nName=Spotlight\nExec={}\nHidden=false\nNoDisplay=false\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Version=1.0\n\
+         Name=Spotlight\n\
+         Comment=Universal launcher for Linux\n\
+         Exec={}\n\
+         Icon=spotlight\n\
+         Terminal=false\n\
+         Categories=Utility;\n\
+         StartupNotify=false\n\
+         Hidden=false\n\
+         X-GNOME-Autostart-enabled=true\n",
         exe.display()
     );
 
@@ -198,12 +230,12 @@ fn enable_autostart() -> Result<(), String> {
 }
 
 fn disable_autostart() -> Result<(), String> {
-    let Some(config_dir) = dirs::config_dir() else {
+    let Some(user) = autostart_user_path() else {
         return Ok(());
     };
-    let desktop = config_dir.join("autostart").join("spotlight.desktop");
-    if desktop.exists() {
-        fs::remove_file(desktop).map_err(|e| e.to_string())?;
+    if let Some(parent) = user.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    fs::write(&user, AUTOSTART_DISABLE).map_err(|e| e.to_string())?;
     Ok(())
 }

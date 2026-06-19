@@ -19,7 +19,7 @@ pub fn toggle_main_window(app: &AppHandle) {
 }
 
 pub fn show_settings_window(app: &AppHandle) -> Result<(), String> {
-    open_or_focus(app, "settings", "Spotlight — Configurações", 720.0, 620.0)
+    open_or_focus(app, "settings", "Spotlight — Configurações", 780.0, 640.0)
 }
 
 pub fn show_store_window(app: &AppHandle) -> Result<(), String> {
@@ -27,7 +27,7 @@ pub fn show_store_window(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn show_extensions_window(app: &AppHandle) -> Result<(), String> {
-    open_or_focus(app, "extensions", "Spotlight — Extensões", 640.0, 480.0)
+    open_or_focus(app, "extensions", "Spotlight — Extensões", 820.0, 580.0)
 }
 
 pub fn show_guide_window(app: &AppHandle) -> Result<(), String> {

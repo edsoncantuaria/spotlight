@@ -5,6 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
+use std::sync::{Arc, RwLock};
+
 use crate::history::HistoryDb;
 use crate::search::ranking::build_result;
 use crate::search::types::{make_id, ResultKind, SearchResult};
@@ -20,7 +22,7 @@ pub struct AppEntry {
 }
 
 pub struct AppIndex {
-    apps: Vec<AppEntry>,
+    apps: Arc<RwLock<Vec<AppEntry>>>,
 }
 
 static EXEC_FIELD_CODES: LazyLock<Regex> =
@@ -28,12 +30,28 @@ static EXEC_FIELD_CODES: LazyLock<Regex> =
 
 impl AppIndex {
     pub fn new() -> Self {
-        let apps = scan_applications();
+        let apps = Arc::new(RwLock::new(Vec::new()));
+        let apps_bg = apps.clone();
+        std::thread::spawn(move || {
+            let scanned = scan_applications();
+            if let Ok(mut guard) = apps_bg.write() {
+                *guard = scanned;
+            }
+        });
         Self { apps }
     }
 
-    pub fn get_by_id(&self, id: &str) -> Option<&AppEntry> {
-        self.apps.iter().find(|app| app.id == id)
+    fn entries(&self) -> Vec<AppEntry> {
+        self.apps.read().map(|a| a.clone()).unwrap_or_default()
+    }
+
+    pub fn get_by_id(&self, id: &str) -> Option<AppEntry> {
+        self.apps
+            .read()
+            .ok()?
+            .iter()
+            .find(|app| app.id == id)
+            .cloned()
     }
 
     pub fn search_results(
@@ -45,9 +63,9 @@ impl AppIndex {
         let query = query.trim();
         let matcher = SkimMatcherV2::default();
 
+        let apps = self.entries();
         let mut results: Vec<SearchResult> = if query.is_empty() {
-            self.apps
-                .iter()
+            apps.into_iter()
                 .take(limit)
                 .map(|app| {
                     build_result(
@@ -63,8 +81,7 @@ impl AppIndex {
                 })
                 .collect()
         } else {
-            self.apps
-                .iter()
+            apps.into_iter()
                 .filter_map(|app| {
                     let score = matcher.fuzzy_match(&app.name, query)?;
                     Some(build_result(

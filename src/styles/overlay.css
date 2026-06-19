@@ -8,7 +8,7 @@ html,
 body,
 #root {
   height: 100%;
-  background: transparent;
+  background: #2b2b2e;
   overflow: hidden;
 }
 
@@ -18,35 +18,9 @@ body,
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 6vh;
+  padding-top: 0;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
     sans-serif;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-.overlay-visible {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
-  animation: overlayIn 0.18s ease forwards;
-}
-
-.overlay-closing {
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-  transition: opacity 0.1s ease, visibility 0.1s ease;
-}
-
-@keyframes overlayIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 .spotlight-shell {

@@ -134,11 +134,8 @@ pub fn search(state: &SpotlightState, query: &str) -> SearchResponse {
                     let mut ext =
                         state.extensions.search_all(ext_query, &state.history, 8, ext_root);
                     if root_kw.is_none() {
-                        if query.contains("window") || query.starts_with("win ") || query.len() >= 2
-                        {
-                            ext.extend(state.windows.search(query, &state.history, 4));
-                        }
                         if query.contains("window") || query.starts_with("win ") {
+                            ext.extend(state.windows.search(query, &state.history, 4));
                             ext.extend(crate::windows::window_commands(&state.history, query, 5));
                         }
                     }
@@ -165,7 +162,7 @@ pub fn search(state: &SpotlightState, query: &str) -> SearchResponse {
                                     state.apps.search_results(query, &state.history, 6),
                                     crate::files::search_files(query, &state.history, 6),
                                     state.settings.search(query, &state.history, 4),
-                                    if query.len() >= 3 {
+                                    if query.len() >= 4 {
                                         state.clipboard.search(query, &state.history, 4)
                                     } else {
                                         Vec::new()
@@ -586,7 +583,7 @@ pub fn open_result(state: &SpotlightState, id: &str, query: Option<&str>) -> Res
                 app.icon.as_deref(),
             );
             state.history.record_launch(id, kind);
-            launcher::launch_app(app)
+            launcher::launch_app(&app)
         }
         ResultKind::File => {
             state.history.record_launch(id, kind);

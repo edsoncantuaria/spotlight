@@ -43,12 +43,12 @@ jobs:
             Primeira release estável do Spotlight para Linux.
 
             ## Instalação
-            Baixe o `.deb` ou `.AppImage` nos assets abaixo.
-
-            ## Dependências recomendadas
             ```bash
-            sudo apt install fd-find wmctrl wtype xdotool git
+            sudo dpkg -i spotlight_*_amd64.deb
             ```
+            Dependências (`xclip`, `wl-clipboard`, `wmctrl`, `wtype`, `xdotool`, `fd-find`) são instaladas automaticamente.
+
+            O Spotlight inicia com o sistema após instalar (desative em Configurações se preferir).
 
             Veja [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
           releaseDraft: false

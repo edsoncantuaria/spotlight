@@ -41,7 +41,7 @@ impl SettingsIndex {
 
     pub fn search(&self, query: &str, history: &HistoryDb, limit: usize) -> Vec<SearchResult> {
         let query = query.trim();
-        if query.is_empty() {
+        if query.len() < 3 {
             return Vec::new();
         }
 

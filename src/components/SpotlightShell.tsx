@@ -19,14 +19,12 @@ interface SpotlightShellProps {
   selectedIndex: number;
   preview: PreviewData | null;
   visible: boolean;
-  closing: boolean;
   onSelect: (result: SearchResult) => void;
   onHover: (index: number) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   onPreviewAction: (actionId: string) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
-  onBackdropClick: () => void;
 }
 
 export default function SpotlightShell({
@@ -39,36 +37,25 @@ export default function SpotlightShell({
   selectedIndex,
   preview,
   visible,
-  closing,
   onSelect,
   onHover,
   onKeyDown,
   onPreviewAction,
   onDragStart,
   onDragEnd,
-  onBackdropClick,
 }: SpotlightShellProps) {
   const hasPreview = preview !== null;
   const hasResults = sections.length > 0;
   const expanded = hasResults || quickAnswer !== null || hasPreview;
 
-  if (!visible && !closing) return null;
-
-  const handleOverlayPointerDown = (e: React.PointerEvent) => {
-    if (!visible || closing) return;
-    if ((e.target as HTMLElement).closest(".spotlight-shell")) return;
-    onBackdropClick();
-  };
+  if (!visible) return null;
 
   return (
-    <div
-      className={`overlay ${visible && !closing ? "overlay-visible" : "overlay-closing"}`}
-      onPointerDown={handleOverlayPointerDown}
-    >
+    <div className="overlay">
       <div
         className={`spotlight-shell ${hasPreview ? "with-preview" : ""} ${
-          visible && !closing ? "spotlight-in" : ""
-        } ${expanded ? "expanded" : "compact"}`}
+          expanded ? "expanded" : "compact"
+        }`}
       >
         <SearchBar
           ref={searchBarRef}
@@ -77,7 +64,7 @@ export default function SpotlightShell({
           onKeyDown={onKeyDown}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
-          searchDebounceMs={150}
+          searchDebounceMs={200}
         />
 
         {expanded && (

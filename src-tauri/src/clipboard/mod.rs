@@ -432,14 +432,15 @@ pub fn paste_item(db: &ClipboardDb, id: &str) -> Result<(), String> {
 pub fn start_watcher(db: ClipboardDb) {
     thread::spawn(move || {
         loop {
-            thread::sleep(Duration::from_millis(500));
+            thread::sleep(Duration::from_millis(800));
             let Ok(mut clipboard) = arboard::Clipboard::new() else {
                 continue;
             };
 
             if let Ok(text) = clipboard.get_text() {
-                db.insert_text(&text);
-                continue;
+                if db.insert_text(&text) {
+                    continue;
+                }
             }
 
             if let Ok(img) = clipboard.get_image() {

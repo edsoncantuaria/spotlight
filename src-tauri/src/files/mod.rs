@@ -1,8 +1,8 @@
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
-use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 use crate::history::HistoryDb;
 use crate::search::ranking::{self, build_result};
@@ -16,9 +16,25 @@ const SKIP_DIRS: &[&str] = &[
     ".local/share/Trash",
 ];
 
+fn fd_binary() -> &'static str {
+    static BIN: OnceLock<&'static str> = OnceLock::new();
+    BIN.get_or_init(|| {
+        if Command::new("fdfind")
+            .arg("--version")
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            "fdfind"
+        } else {
+            "fd"
+        }
+    })
+}
+
 pub fn search_files(query: &str, history: &HistoryDb, limit: usize) -> Vec<SearchResult> {
     let query = query.trim();
-    if query.len() < 2 {
+    if query.len() < 3 {
         return Vec::new();
     }
 
@@ -27,14 +43,19 @@ pub fn search_files(query: &str, history: &HistoryDb, limit: usize) -> Vec<Searc
         return indexed;
     }
 
+    // Só consulta o disco quando o índice não preenche e a query tem 4+ caracteres.
+    if query.len() < 4 {
+        return indexed;
+    }
+
     let remaining = limit - indexed.len();
-    let mut paths = search_with_fd(query, remaining * 2).unwrap_or_else(|| search_with_walk(query, remaining * 2));
+    let mut paths = search_with_fd(query, remaining).unwrap_or_default();
     let existing: std::collections::HashSet<String> = indexed.iter().map(|r| r.id.clone()).collect();
     paths.retain(|p| !existing.contains(&make_id(ResultKind::File, &p.to_string_lossy())));
 
     let matcher = SkimMatcherV2::default();
     let mut results: Vec<SearchResult> = paths
-        .par_iter()
+        .into_iter()
         .filter_map(|path| {
             let name = path.file_name()?.to_str()?;
             let score = matcher.fuzzy_match(name, query)?;
@@ -45,7 +66,7 @@ pub fn search_files(query: &str, history: &HistoryDb, limit: usize) -> Vec<Searc
                 ResultKind::File,
                 name.to_string(),
                 Some(parent),
-                file_icon(path),
+                file_icon(&path),
                 score,
                 query,
                 history,
@@ -62,13 +83,14 @@ pub fn search_files(query: &str, history: &HistoryDb, limit: usize) -> Vec<Searc
 fn search_with_fd(query: &str, limit: usize) -> Option<Vec<PathBuf>> {
     let home = dirs::home_dir()?;
     let mut results = Vec::new();
+    let bin = fd_binary();
 
     for dir in file_search_roots(&home) {
         if results.len() >= limit {
             break;
         }
         let remaining = limit - results.len();
-        let output = Command::new("fd")
+        let output = Command::new(bin)
             .args([
                 "-i",
                 query,
@@ -121,50 +143,6 @@ fn file_search_roots(home: &Path) -> Vec<PathBuf> {
     .map(|sub| home.join(sub))
     .filter(|p| p.exists())
     .collect()
-}
-
-fn search_with_walk(query: &str, limit: usize) -> Vec<PathBuf> {
-    let query_lower = query.to_lowercase();
-    let mut roots = Vec::new();
-    if let Some(home) = dirs::home_dir() {
-        roots = file_search_roots(&home);
-    }
-
-    let mut results = Vec::new();
-    for root in roots {
-        if results.len() >= limit {
-            break;
-        }
-        walkdir::WalkDir::new(root)
-            .max_depth(6)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .filter(|e| {
-                let path = e.path();
-                !should_skip(path)
-            })
-            .filter_map(|e| {
-                let name = e.file_name().to_str()?;
-                if name.to_lowercase().contains(&query_lower) {
-                    Some(e.path().to_path_buf())
-                } else {
-                    None
-                }
-            })
-            .take(limit - results.len())
-            .for_each(|p| results.push(p));
-    }
-    results
-}
-
-fn should_skip(path: &Path) -> bool {
-    path.components().any(|c| {
-        c.as_os_str()
-            .to_str()
-            .map(|s| SKIP_DIRS.iter().any(|skip| s == *skip || s.starts_with('.')))
-            .unwrap_or(false)
-    })
 }
 
 fn file_icon(path: &Path) -> Option<String> {

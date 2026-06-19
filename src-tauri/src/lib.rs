@@ -23,6 +23,7 @@ mod input;
 mod system_commands;
 mod extension_store;
 mod tray;
+mod platform;
 
 use tauri::Manager;
 
@@ -33,12 +34,18 @@ pub fn run() {
     let state = SpotlightState::new();
     let clipboard_db = state.clipboard.clone_for_watcher();
 
+    platform::log_startup_environment();
+    platform::desktop::check_clipboard_tools();
+
     let _ = config::sync_autostart();
     file_index::start_file_watcher();
     clipboard::start_watcher(clipboard_db);
     std::thread::spawn(|| crate::quick_answers::warm_cache());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            platform::handle_second_instance(app, &args);
+        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(state)
         .setup(|app| {
@@ -47,7 +54,13 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 commands::setup_global_shortcut(app.handle())?;
+                platform::setup_desktop_integration(app.handle());
                 tray::setup_tray(app.handle())?;
+                for label in ["main", "clipboard"] {
+                    if let Some(w) = app.get_webview_window(label) {
+                        let _ = w.hide();
+                    }
+                }
             }
             Ok(())
         })
@@ -73,9 +86,16 @@ pub fn run() {
             commands::list_extensions,
             commands::run_extension,
             commands::backup_spotlight,
+            commands::validate_shortcut,
+            commands::validate_shortcuts,
             commands::open_settings,
+            commands::open_store,
+            commands::open_extensions,
+            commands::set_extension_enabled,
             commands::hide_window,
             commands::hide_clipboard_window,
+            commands::present_main,
+            commands::present_clipboard,
             commands::resize_window,
             commands::save_window_position,
         ])

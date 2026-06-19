@@ -18,6 +18,7 @@
     "core:window:allow-set-focusable",
     "core:window:allow-close",
     "core:window:allow-unminimize",
-    "core:webview:allow-set-webview-focus"
+    "core:webview:allow-set-webview-focus",
+    "global-shortcut:default"
   ]
 }

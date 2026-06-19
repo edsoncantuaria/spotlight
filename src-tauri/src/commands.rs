@@ -113,6 +113,7 @@ pub fn save_config(
     crate::config::sync_autostart()?;
     state.reload_config();
     setup_global_shortcut(&app).map_err(|e| e.to_string())?;
+    crate::platform::setup_desktop_integration(&app);
     Ok(())
 }
 
@@ -143,9 +144,73 @@ pub fn backup_spotlight() -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn validate_shortcut(
+    shortcut: String,
+    app: tauri::AppHandle,
+) -> crate::platform::shortcuts::ShortcutValidation {
+    crate::platform::shortcuts::validate_shortcut(&app, &shortcut)
+}
+
+#[tauri::command]
+pub fn validate_shortcuts(
+    shortcuts: Vec<String>,
+    clipboard_shortcut: String,
+    app: tauri::AppHandle,
+) -> Result<Vec<crate::platform::shortcuts::ShortcutValidation>, String> {
+    use crate::platform::shortcuts::{shortcuts_overlap, validate_shortcut, validate_shortcut_list};
+
+    if shortcuts.is_empty() {
+        return Err("Informe ao menos um atalho para o Spotlight.".into());
+    }
+
+    let mut results = validate_shortcut_list(&app, &shortcuts);
+    results.push(validate_shortcut(&app, &clipboard_shortcut));
+
+    for i in 0..shortcuts.len() {
+        for j in (i + 1)..shortcuts.len() {
+            if shortcuts_overlap(&shortcuts[i], &shortcuts[j]) {
+                return Err(format!(
+                    "Atalhos duplicados: {} e {}",
+                    shortcuts[i], shortcuts[j]
+                ));
+            }
+        }
+        if shortcuts_overlap(&shortcuts[i], &clipboard_shortcut) {
+            return Err(format!(
+                "Spotlight e clipboard usam o mesmo atalho: {}",
+                shortcuts[i]
+            ));
+        }
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
 pub fn open_settings(state: State<'_, SpotlightState>) -> Result<(), String> {
     let app = state.app_handle().ok_or_else(|| "App não inicializado".to_string())?;
     crate::ui::show_settings_window(&app)
+}
+
+#[tauri::command]
+pub fn open_store(state: State<'_, SpotlightState>) -> Result<(), String> {
+    let app = state.app_handle().ok_or_else(|| "App não inicializado".to_string())?;
+    crate::ui::show_store_window(&app)
+}
+
+#[tauri::command]
+pub fn open_extensions(state: State<'_, SpotlightState>) -> Result<(), String> {
+    let app = state.app_handle().ok_or_else(|| "App não inicializado".to_string())?;
+    crate::ui::show_extensions_window(&app)
+}
+
+#[tauri::command]
+pub fn set_extension_enabled(
+    id: String,
+    enabled: bool,
+    state: State<'_, SpotlightState>,
+) -> Result<(), String> {
+    state.extensions.set_enabled(&id, enabled)
 }
 
 #[tauri::command]
@@ -237,25 +302,20 @@ pub fn hide_window(window: WebviewWindow) -> Result<(), String> {
 
 #[tauri::command]
 pub fn hide_clipboard_window(window: WebviewWindow) -> Result<(), String> {
-    hide_window_silent(&window);
+    hide_window_notify(&window);
     Ok(())
-}
-
-fn hide_window_silent(window: &WebviewWindow) {
-    if window.label() == "main" {
-        let _ = window_state::save_position(window);
-    }
-    let _ = window.hide();
 }
 
 pub fn hide_window_notify(window: &WebviewWindow) {
     if window.label() == "main" {
         let _ = window_state::save_position(window);
+    }
+    let _ = window.hide();
+    if window.label() == "main" {
         let _ = window.emit("spotlight-hidden", ());
     } else if window.label() == "clipboard" {
         let _ = window.emit("clipboard-hidden", ());
     }
-    let _ = window.hide();
 }
 
 #[tauri::command]
@@ -295,55 +355,17 @@ const CLIPBOARD_FOCUS_JS: &str = r#"(() => {
 fn focus_window_and_webview(window: &WebviewWindow, focus_js: &str) {
     let _ = window.set_focusable(true);
     let _ = window.set_always_on_top(true);
-    linux_activate_window(window, true);
-    let _ = window.set_focus();
-    let _ = window.as_ref().set_focus();
-    let _ = window.eval(focus_js);
-}
-
-fn present_window(window: &WebviewWindow, focus_js: &str) {
-    let _ = window.set_focusable(true);
-    let _ = window.set_always_on_top(true);
 
     #[cfg(target_os = "linux")]
-    {
-        if !window.is_visible().unwrap_or(false) {
-            let _ = window.show();
-        }
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let was_visible = window.is_visible().unwrap_or(false);
-        if was_visible {
-            let _ = window.hide();
-            let _ = window.show();
-        } else {
-            let _ = window.show();
-        }
-    }
-
-    focus_window_and_webview(window, focus_js);
-    linux_schedule_focus(window, focus_js);
-}
-
-#[cfg(target_os = "linux")]
-fn linux_activate_window(window: &WebviewWindow, use_wmctrl: bool) {
-    use gtk::prelude::*;
-
     if let Ok(gtk_win) = window.gtk_window() {
+        use gtk::prelude::*;
         gtk_win.present();
     }
 
-    let _ = window.with_webview(|wv| {
-        use gtk::prelude::*;
-        let webview = wv.inner();
-        webview.grab_focus();
-        if let Some(gdk_window) = webview.window() {
-            gdk_window.focus(gtk::gdk::ffi::GDK_CURRENT_TIME as u32);
-        }
-    });
+    let _ = window.set_focus();
+    let _ = window.eval(focus_js);
 
-    if use_wmctrl {
+    if crate::platform::desktop::use_wmctrl() {
         if let Ok(title) = window.title() {
             if !title.is_empty() {
                 let _ = std::process::Command::new("wmctrl")
@@ -357,46 +379,32 @@ fn linux_activate_window(window: &WebviewWindow, use_wmctrl: bool) {
     }
 }
 
+fn present_window(window: &WebviewWindow, focus_js: &str) {
+    let _ = window.set_focusable(true);
+    let _ = window.set_always_on_top(true);
+
+    if !window.is_visible().unwrap_or(false) {
+        let _ = window.show();
+    }
+
+    focus_window_and_webview(window, focus_js);
+}
+
+#[cfg(target_os = "linux")]
+fn linux_activate_window(_window: &WebviewWindow, _use_wmctrl: bool) {}
+
 #[cfg(not(target_os = "linux"))]
 fn linux_activate_window(_window: &WebviewWindow, _use_wmctrl: bool) {}
 
 #[cfg(target_os = "linux")]
-fn linux_schedule_focus(window: &WebviewWindow, focus_js: &str) {
-    use gtk::glib;
-
-    for delay_ms in [50u32, 200, 450] {
-        let window = window.clone();
-        let js = focus_js.to_string();
-        let use_wmctrl = delay_ms >= 450;
-        glib::timeout_add_local_once(std::time::Duration::from_millis(delay_ms as u64), move || {
-            linux_activate_window(&window, use_wmctrl);
-            let _ = window.set_focus();
-            let _ = window.as_ref().set_focus();
-            let _ = window.eval(&js);
-        });
-    }
-}
+fn linux_schedule_focus(_window: &WebviewWindow, _focus_js: &str) {}
 
 #[cfg(not(target_os = "linux"))]
 fn linux_schedule_focus(_window: &WebviewWindow, _focus_js: &str) {}
 
-fn schedule_focus_retries(window: &WebviewWindow, focus_js: &str) {
-    let w = window.clone();
-    let js = focus_js.to_string();
+fn schedule_focus_retries(_window: &WebviewWindow, _focus_js: &str) {}
 
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(400));
-        let w2 = w.clone();
-        let _ = w.run_on_main_thread(move || {
-            linux_activate_window(&w2, true);
-            let _ = w2.set_focus();
-            let _ = w2.as_ref().set_focus();
-            let _ = w2.eval(&js);
-        });
-    });
-}
-
-fn show_window_on_main(window: &WebviewWindow) {
+fn request_show_main(window: &WebviewWindow) {
     if let Some(clipboard) = window.app_handle().get_webview_window("clipboard") {
         hide_window_notify(&clipboard);
     }
@@ -404,11 +412,9 @@ fn show_window_on_main(window: &WebviewWindow) {
     let _ = window.unminimize();
     window_state::restore_position(window);
     let _ = window.emit("spotlight-shown", ());
-    present_window(window, SPOTLIGHT_FOCUS_JS);
-    schedule_focus_retries(window, SPOTLIGHT_FOCUS_JS);
 }
 
-fn show_clipboard_window_on_main(window: &WebviewWindow) {
+fn request_show_clipboard(window: &WebviewWindow) {
     if let Some(main) = window.app_handle().get_webview_window("main") {
         hide_window_notify(&main);
     }
@@ -416,8 +422,40 @@ fn show_clipboard_window_on_main(window: &WebviewWindow) {
     let _ = window.unminimize();
     let _ = window.center();
     let _ = window.emit("clipboard-shown", ());
+}
+
+pub fn present_main_window(window: &WebviewWindow) {
+    present_window(window, SPOTLIGHT_FOCUS_JS);
+}
+
+pub fn present_clipboard_window(window: &WebviewWindow) {
     present_window(window, CLIPBOARD_FOCUS_JS);
-    schedule_focus_retries(window, CLIPBOARD_FOCUS_JS);
+}
+
+#[tauri::command]
+pub fn present_main(window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("Janela inválida".into());
+    }
+    present_main_window(&window);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn present_clipboard(window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "clipboard" {
+        return Err("Janela inválida".into());
+    }
+    present_clipboard_window(&window);
+    Ok(())
+}
+
+fn show_window_on_main(window: &WebviewWindow) {
+    request_show_main(window);
+}
+
+fn show_clipboard_window_on_main(window: &WebviewWindow) {
+    request_show_clipboard(window);
 }
 
 fn toggle_window_on_main(window: &WebviewWindow) {

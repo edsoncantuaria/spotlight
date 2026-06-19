@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -139,6 +140,14 @@ impl SearchProvider for UserScriptExtension {
 }
 
 pub fn load_user_providers() -> Vec<(ExtensionManifest, PathBuf)> {
+    load_user_extensions(false)
+}
+
+pub fn load_all_user_extensions() -> Vec<(ExtensionManifest, PathBuf)> {
+    load_user_extensions(true)
+}
+
+fn load_user_extensions(include_disabled: bool) -> Vec<(ExtensionManifest, PathBuf)> {
     let dirs = extension_search_dirs();
     let mut out = Vec::new();
 
@@ -162,13 +171,34 @@ pub fn load_user_providers() -> Vec<(ExtensionManifest, PathBuf)> {
                 continue;
             };
             if let Ok(m) = serde_json::from_str::<ExtensionManifest>(&content) {
-                if m.enabled {
+                if include_disabled || m.enabled {
                     out.push((m, item.path()));
                 }
             }
         }
     }
     out
+}
+
+pub fn set_user_extension_enabled(id: &str, enabled: bool) -> Result<(), String> {
+    for dir in extension_search_dirs() {
+        if !dir.exists() {
+            continue;
+        }
+        let ext_dir = dir.join(id);
+        let manifest_path = ext_dir.join("manifest.json");
+        if !manifest_path.exists() {
+            continue;
+        }
+        let content = fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
+        let mut manifest: ExtensionManifest =
+            serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        manifest.enabled = enabled;
+        let updated = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+        fs::write(&manifest_path, updated).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    Err(format!("Extensão de usuário '{id}' não encontrada"))
 }
 
 fn extension_search_dirs() -> Vec<PathBuf> {

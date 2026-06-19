@@ -28,13 +28,11 @@ function App() {
   const [actionPaletteOpen, setActionPaletteOpen] = useState(false);
   const [theme, setTheme] = useState("auto");
   const [visible, setVisible] = useState(false);
-  const [closing, setClosing] = useState(false);
   const [openSession, setOpenSession] = useState(0);
 
   const searchBarRef = useRef<SearchBarHandle>(null);
   const moveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressBlurRef = useRef(false);
-  const openingGraceUntilRef = useRef(0);
   const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchGenRef = useRef(0);
   const cancelFocusRetriesRef = useRef<(() => void) | null>(null);
@@ -70,15 +68,11 @@ function App() {
   const resetHidden = useCallback(() => {
     cancelFocusRetriesRef.current?.();
     cancelFocusRetriesRef.current = null;
-    setClosing(false);
     setVisible(false);
   }, []);
 
   const openSpotlight = useCallback(() => {
-    suppressBlurRef.current = true;
-    openingGraceUntilRef.current = Date.now() + 1200;
     flushSync(() => {
-      setClosing(false);
       setVisible(true);
       setOpenSession((n) => n + 1);
       setSections([]);
@@ -86,35 +80,26 @@ function App() {
       setSelectedIndex(0);
       setPreview(null);
     });
-    scheduleFocus();
-    window.setTimeout(() => scheduleFocus(), 100);
-    window.setTimeout(() => scheduleFocus(), 450);
-    setTimeout(() => {
-      suppressBlurRef.current = false;
-    }, 1200);
+    void invoke("present_main").then(() => scheduleFocus());
   }, [scheduleFocus]);
 
   const flatResults = useMemo(() => flattenSections(sections), [sections]);
 
   useEffect(() => {
-    if (!visible || closing) return;
+    if (!visible) return;
     scheduleFocus();
     return () => cancelFocusRetriesRef.current?.();
-  }, [visible, closing, openSession, scheduleFocus]);
+  }, [visible, openSession, scheduleFocus]);
 
   const hideWindow = useCallback(async () => {
     cancelFocusRetriesRef.current?.();
     cancelFocusRetriesRef.current = null;
-    suppressBlurRef.current = true;
-    setClosing(true);
+    await invoke("hide_window");
+    setVisible(false);
     setSections([]);
     setQuickAnswer(null);
     setPreview(null);
     setSelectedIndex(0);
-    await new Promise((r) => setTimeout(r, 80));
-    await invoke("hide_window");
-    setVisible(false);
-    setClosing(false);
   }, []);
 
   const handleDragStart = useCallback(() => {
@@ -126,12 +111,6 @@ function App() {
       suppressBlurRef.current = false;
     }, 300);
   }, []);
-
-  const handleBackdropClick = useCallback(() => {
-    if (suppressBlurRef.current || closing) return;
-    suppressBlurRef.current = true;
-    hideWindow();
-  }, [hideWindow, closing]);
 
   const loadPreview = useCallback(async (result: SearchResult | null) => {
     if (!result) {
@@ -164,24 +143,6 @@ function App() {
   }, [selectedIndex, flatResults, loadPreview, openSession]);
 
   useEffect(() => {
-    const window = getCurrentWindow();
-
-    const unlistenFocus = window.onFocusChanged(async ({ payload: focused }) => {
-      if (focused) {
-        if (visible) scheduleFocus();
-        return;
-      }
-      if (suppressBlurRef.current || closing) return;
-      if (Date.now() < openingGraceUntilRef.current) return;
-      if (!visible) return;
-      const isVisible = await window.isVisible();
-      if (!isVisible) {
-        resetHidden();
-        return;
-      }
-      hideWindow();
-    });
-
     const unlistenShown = listen("spotlight-shown", () => {
       openSpotlight();
     });
@@ -190,7 +151,7 @@ function App() {
       resetHidden();
     });
 
-    const unlistenMove = window.onMoved(({ payload: position }) => {
+    const unlistenMove = getCurrentWindow().onMoved(({ payload: position }) => {
       if (moveDebounceRef.current) clearTimeout(moveDebounceRef.current);
       moveDebounceRef.current = setTimeout(() => {
         invoke("save_window_position", { x: position.x, y: position.y });
@@ -198,13 +159,12 @@ function App() {
     });
 
     return () => {
-      unlistenFocus.then((fn) => fn());
       unlistenShown.then((fn) => fn());
       unlistenHidden.then((fn) => fn());
       unlistenMove.then((fn) => fn());
       if (moveDebounceRef.current) clearTimeout(moveDebounceRef.current);
     };
-  }, [openSpotlight, hideWindow, closing, resetHidden, visible, scheduleFocus]);
+  }, [openSpotlight, resetHidden]);
 
   const handleOpen = async (result: SearchResult) => {
     const query = searchBarRef.current?.getValue() ?? "";
@@ -311,15 +271,13 @@ function App() {
         quickAnswer={quickAnswer}
         selectedIndex={selectedIndex}
         preview={preview}
-        visible={visible && !closing}
-        closing={closing}
+        visible={visible}
         onSelect={handleOpen}
         onHover={setSelectedIndex}
         onKeyDown={handleKeyDown}
         onPreviewAction={handlePreviewAction}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
-        onBackdropClick={handleBackdropClick}
       />
       <ActionPalette
         open={actionPaletteOpen}

@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.0.6] - 2026-06-17
+
+### Adicionado
+- Autostart real ao instalar `.deb` (`/etc/xdg/autostart`) — não precisa rodar `spotlight &`
+- Configurações: capturar/testar atalhos antes de salvar; detecta conflitos no GNOME
+- Extensões: habilitar/desabilitar integradas e de usuário; filtros (ativas, desativadas, etc.)
+
+### Corrigido
+- Desmarcar "Abrir com o sistema" grava override `Hidden=true` mesmo com autostart do sistema
+- Índice de apps carrega em background (startup mais rápido no login)
+- Busca de configurações do sistema só com 3+ caracteres
+
+## [1.0.5] - 2026-06-17
+
+### Adicionado
+- Configurações repaginadas: sidebar, seções Geral / Atalhos / Busca / Avançado
+- Página de extensões com cards, filtro e toggle para extensões de usuário
+
+### Corrigido
+- Busca mais fluida: extensões pesadas (docker, git) só rodam quando relevantes
+- Listagem de janelas só quando a query menciona janelas
+- Busca de arquivos usa índice primeiro; `fdfind`/`fd` como fallback
+- Dependências (`xclip`, `wl-clipboard`, `wmctrl`, `wtype`, `xdotool`, `fd-find`) obrigatórias no `.deb`
+
+## [1.0.4] - 2026-06-17
+
+### Corrigido
+- Janela invisível que bloqueava cliques no desktop: a UI monta antes de `show()` nativo
+- Fechar esconde a janela nativa imediatamente (sem overlay transparente preso)
+- Atalhos no GNOME: fallback via `gsettings` + segunda instância (`--toggle`, `--toggle-clipboard`)
+- Janelas main e clipboard ocultas no startup
+
+### Melhorado
+- Detecção de ambiente (X11/Wayland, GNOME/KDE) com aviso se faltam `xclip`/`wl-clipboard`
+- `.deb` recomenda: xclip, wl-clipboard, wmctrl, wtype, xdotool
+
 ## [1.0.3] - 2026-06-18
 
 ### Corrigido

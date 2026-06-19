@@ -1,5 +1,6 @@
 import { resolveImageSrc } from "./lib/imageSrc";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -16,12 +17,10 @@ export default function ClipboardApp() {
   const [stackCount, setStackCount] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [visible, setVisible] = useState(false);
-  const [closing, setClosing] = useState(false);
   const [openSession, setOpenSession] = useState(0);
 
   const shellRef = useRef<HTMLDivElement>(null);
   const suppressBlurRef = useRef(false);
-  const openingGraceUntilRef = useRef(0);
   const cancelFocusRetriesRef = useRef<(() => void) | null>(null);
   const setSelectedRef = useScrollSelectedItem<HTMLLIElement>(selectedIndex);
 
@@ -47,38 +46,30 @@ export default function ClipboardApp() {
   const resetHidden = useCallback(() => {
     cancelFocusRetriesRef.current?.();
     cancelFocusRetriesRef.current = null;
-    setClosing(false);
     setVisible(false);
   }, []);
 
   const hideWindow = useCallback(async () => {
     cancelFocusRetriesRef.current?.();
     cancelFocusRetriesRef.current = null;
-    setClosing(true);
-    await new Promise((r) => setTimeout(r, 120));
     await invoke("hide_clipboard_window");
     setVisible(false);
-    setClosing(false);
   }, []);
 
   const openClipboard = useCallback(() => {
-    suppressBlurRef.current = true;
-    openingGraceUntilRef.current = Date.now() + 1200;
-    setClosing(false);
-    setVisible(true);
-    setOpenSession((n) => n + 1);
+    flushSync(() => {
+      setVisible(true);
+      setOpenSession((n) => n + 1);
+    });
     loadItems();
-    scheduleFocus();
-    setTimeout(() => {
-      suppressBlurRef.current = false;
-    }, 1200);
+    void invoke("present_clipboard").then(() => scheduleFocus());
   }, [loadItems, scheduleFocus]);
 
   useEffect(() => {
-    if (!visible || closing) return;
+    if (!visible) return;
     scheduleFocus();
     return () => cancelFocusRetriesRef.current?.();
-  }, [visible, closing, openSession, scheduleFocus]);
+  }, [visible, openSession, scheduleFocus]);
 
   const copyItem = useCallback(
     async (index: number) => {
@@ -114,24 +105,6 @@ export default function ClipboardApp() {
   }, [hideWindow]);
 
   useEffect(() => {
-    const window = getCurrentWindow();
-
-    const unlistenFocus = window.onFocusChanged(async ({ payload: focused }) => {
-      if (focused) {
-        if (visible) scheduleFocus();
-        return;
-      }
-      if (suppressBlurRef.current || closing) return;
-      if (Date.now() < openingGraceUntilRef.current) return;
-      if (!visible) return;
-      const isVisible = await window.isVisible();
-      if (!isVisible) {
-        resetHidden();
-        return;
-      }
-      hideWindow();
-    });
-
     const unlistenShown = listen("clipboard-shown", () => {
       openClipboard();
     });
@@ -141,11 +114,10 @@ export default function ClipboardApp() {
     });
 
     return () => {
-      unlistenFocus.then((fn) => fn());
       unlistenShown.then((fn) => fn());
       unlistenHidden.then((fn) => fn());
     };
-  }, [openClipboard, hideWindow, closing, resetHidden, visible, scheduleFocus]);
+  }, [openClipboard, resetHidden]);
 
   useEffect(() => {
     if (visible) loadItems();
@@ -201,12 +173,6 @@ export default function ClipboardApp() {
     void getCurrentWindow().startDragging();
   };
 
-  const handleOverlayPointerDown = (e: React.PointerEvent) => {
-    if (!visible) return;
-    if (shellRef.current?.contains(e.target as Node)) return;
-    hideWindow();
-  };
-
   const filters: { id: ClipboardFilter; label: string }[] = [
     { id: "all", label: "Tudo" },
     { id: "text", label: "Texto" },
@@ -214,16 +180,15 @@ export default function ClipboardApp() {
     { id: "pinned", label: "Fixados" },
   ];
 
+  if (!visible) return null;
+
   return (
-    <div
-      className={`overlay ${visible && !closing ? "overlay-visible" : ""}`}
-      onPointerDown={handleOverlayPointerDown}
-    >
+    <div className="overlay">
       <div
         ref={shellRef}
         tabIndex={-1}
         data-focus-root
-        className={`spotlight-shell ${visible && !closing ? "spotlight-in" : ""}`}
+        className="spotlight-shell"
       >
         <div
           className="search-bar clipboard-header"
