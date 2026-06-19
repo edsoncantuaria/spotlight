@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2] - 2026-06-18
+
+### Corrigido
+- Highlight de busca: só destaca substring exata da query (sem blocos azuis quebrados)
+- Clipboard: janela não fecha sozinha ao abrir (`Ctrl+Alt+C`)
+- Clipboard: Enter cola no app focado (não só copia para a área de transferência)
+- Watcher do clipboard prioriza texto antes de imagem
+
 ## [1.0.1] - 2026-06-18
 
 ### Corrigido
@@ -26,5 +34,6 @@
 - Extensão AI desabilitada por padrão (sem API key necessária)
 - Testado em Ubuntu/Debian; Wayland e X11 com dependências opcionais
 
+[1.0.2]: https://github.com/edsoncantuaria/spotlight/releases/tag/v1.0.2
 [1.0.1]: https://github.com/edsoncantuaria/spotlight/releases/tag/v1.0.1
 [1.0.0]: https://github.com/edsoncantuaria/spotlight/releases/tag/v1.0.0

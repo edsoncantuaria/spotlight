@@ -224,6 +224,11 @@ pub fn copy_clipboard_item(id: String, state: State<'_, SpotlightState>) -> Resu
 }
 
 #[tauri::command]
+pub fn paste_clipboard_item(id: String, state: State<'_, SpotlightState>) -> Result<(), String> {
+    clipboard::paste_item(&state.clipboard, &id)
+}
+
+#[tauri::command]
 pub fn hide_window(window: WebviewWindow) -> Result<(), String> {
     hide_window_notify(&window);
     Ok(())
@@ -397,8 +402,8 @@ fn show_window_on_main(window: &WebviewWindow) {
 
     let _ = window.unminimize();
     window_state::restore_position(window);
-    present_window(window, SPOTLIGHT_FOCUS_JS);
     let _ = window.emit("spotlight-shown", ());
+    present_window(window, SPOTLIGHT_FOCUS_JS);
     schedule_focus_retries(window, SPOTLIGHT_FOCUS_JS);
 }
 
@@ -409,8 +414,8 @@ fn show_clipboard_window_on_main(window: &WebviewWindow) {
 
     let _ = window.unminimize();
     let _ = window.center();
-    present_window(window, CLIPBOARD_FOCUS_JS);
     let _ = window.emit("clipboard-shown", ());
+    present_window(window, CLIPBOARD_FOCUS_JS);
     schedule_focus_retries(window, CLIPBOARD_FOCUS_JS);
 }
 

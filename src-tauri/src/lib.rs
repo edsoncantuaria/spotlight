@@ -63,6 +63,7 @@ pub fn run() {
             commands::get_clipboard_stack_count,
             commands::clear_clipboard_stack,
             commands::copy_clipboard_item,
+            commands::paste_clipboard_item,
             commands::list_store_extensions,
             commands::install_store_extension,
             commands::get_extensions_guide,

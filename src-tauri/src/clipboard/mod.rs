@@ -421,6 +421,14 @@ pub fn copy_item_to_clipboard(db: &ClipboardDb, id: &str) -> Result<(), String> 
         .map_err(|e| e.to_string())
 }
 
+pub fn paste_item(db: &ClipboardDb, id: &str) -> Result<(), String> {
+    copy_item_to_clipboard(db, id)?;
+    std::thread::spawn(|| {
+        let _ = crate::input::simulate_paste();
+    });
+    Ok(())
+}
+
 pub fn start_watcher(db: ClipboardDb) {
     thread::spawn(move || {
         loop {
@@ -429,15 +437,15 @@ pub fn start_watcher(db: ClipboardDb) {
                 continue;
             };
 
+            if let Ok(text) = clipboard.get_text() {
+                db.insert_text(&text);
+                continue;
+            }
+
             if let Ok(img) = clipboard.get_image() {
                 if !img.bytes.is_empty() {
                     db.insert_image(img.width, img.height, &img.bytes);
-                    continue;
                 }
-            }
-
-            if let Ok(text) = clipboard.get_text() {
-                db.insert_text(&text);
             }
         }
     });

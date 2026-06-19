@@ -84,7 +84,7 @@ export default function ClipboardApp() {
     async (index: number) => {
       const item = items[index];
       if (!item) return;
-      await invoke("copy_clipboard_item", { id: item.id });
+      await invoke("paste_clipboard_item", { id: item.id });
       await hideWindow();
     },
     [items, hideWindow],
@@ -123,6 +123,7 @@ export default function ClipboardApp() {
       }
       if (suppressBlurRef.current || closing) return;
       if (Date.now() < openingGraceUntilRef.current) return;
+      if (!visible) return;
       const isVisible = await window.isVisible();
       if (!isVisible) {
         resetHidden();
@@ -319,7 +320,7 @@ export default function ClipboardApp() {
         </div>
 
         <div className="clipboard-footer">
-          <span>Enter copiar · Shift+Enter stack · Ctrl+P fixar</span>
+          <span>Enter colar · Shift+Enter stack · Ctrl+P fixar</span>
           <span>Ctrl+Shift+V colar stack</span>
         </div>
       </div>
