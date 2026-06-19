@@ -78,6 +78,20 @@ pub fn open_setting(panel: &str) -> Result<(), String> {
     {
         return Ok(());
     }
+    if Command::new("systemsettings")
+        .arg(panel)
+        .spawn()
+        .is_ok()
+    {
+        return Ok(());
+    }
+    if Command::new("kcmshell6")
+        .arg(panel)
+        .spawn()
+        .is_ok()
+    {
+        return Ok(());
+    }
     Command::new("xdg-open")
         .arg(format!("gnome-control-center-{panel}.desktop"))
         .spawn()
@@ -137,7 +151,14 @@ fn parse_settings_desktop(path: &Path) -> Option<SettingEntry> {
     }
 
     if !is_settings && !categories.to_lowercase().contains("settings") {
-        return None;
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if !stem.starts_with("kcm_") && !stem.starts_with("kcmshell") {
+            return None;
+        }
+        is_settings = true;
     }
 
     let name = name?;

@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import SpotlightShell from "./components/SpotlightShell";
+import ActionPalette from "./components/ActionPalette";
+import type { SearchBarHandle } from "./components/SearchBar";
 import type {
   PreviewData,
   QuickAnswer,
@@ -12,42 +14,57 @@ import type {
   SearchResult,
 } from "./types";
 import "./styles/overlay.css";
-import { scheduleFocusRetries } from "./lib/focusSearch";
+import { scheduleWindowFocus } from "./lib/focusSearch";
 
 function flattenSections(sections: ResultSection[]): SearchResult[] {
   return sections.flatMap((s) => s.results);
 }
 
 function App() {
-  const [query, setQuery] = useState("");
   const [sections, setSections] = useState<ResultSection[]>([]);
   const [quickAnswer, setQuickAnswer] = useState<QuickAnswer | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [actionPaletteOpen, setActionPaletteOpen] = useState(false);
+  const [theme, setTheme] = useState("auto");
   const [visible, setVisible] = useState(false);
   const [closing, setClosing] = useState(false);
   const [openSession, setOpenSession] = useState(0);
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchBarRef = useRef<SearchBarHandle>(null);
   const moveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressBlurRef = useRef(false);
   const openingGraceUntilRef = useRef(0);
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchGenRef = useRef(0);
   const cancelFocusRetriesRef = useRef<(() => void) | null>(null);
 
+  useEffect(() => {
+    invoke<{ theme: string }>("get_config")
+      .then((cfg) => setTheme(cfg.theme || "auto"))
+      .catch(() => {});
+  }, [openSession]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
   const scheduleFocus = useCallback(() => {
     cancelFocusRetriesRef.current?.();
-    cancelFocusRetriesRef.current = scheduleFocusRetries(inputRef);
+    cancelFocusRetriesRef.current = scheduleWindowFocus(() => {
+      const input = document.querySelector<HTMLInputElement>(".search-input");
+      return input;
+    });
   }, []);
 
-  const performSearch = useCallback(async (q: string) => {
+  const performSearch = useCallback(async (q: string): Promise<SearchResponse | null> => {
     const gen = ++searchGenRef.current;
     const result = await invoke<SearchResponse>("search", { query: q });
-    if (gen !== searchGenRef.current) return;
+    if (gen !== searchGenRef.current) return null;
     setSections(result.sections);
     setQuickAnswer(result.quick_answer);
     setSelectedIndex(0);
+    return result;
   }, []);
 
   const resetHidden = useCallback(() => {
@@ -64,18 +81,18 @@ function App() {
       setClosing(false);
       setVisible(true);
       setOpenSession((n) => n + 1);
-      setQuery("");
       setSections([]);
       setQuickAnswer(null);
       setSelectedIndex(0);
       setPreview(null);
     });
     scheduleFocus();
-    performSearch("");
+    window.setTimeout(() => scheduleFocus(), 100);
+    window.setTimeout(() => scheduleFocus(), 450);
     setTimeout(() => {
       suppressBlurRef.current = false;
     }, 1200);
-  }, [performSearch, scheduleFocus]);
+  }, [scheduleFocus]);
 
   const flatResults = useMemo(() => flattenSections(sections), [sections]);
 
@@ -88,8 +105,13 @@ function App() {
   const hideWindow = useCallback(async () => {
     cancelFocusRetriesRef.current?.();
     cancelFocusRetriesRef.current = null;
+    suppressBlurRef.current = true;
     setClosing(true);
-    await new Promise((r) => setTimeout(r, 120));
+    setSections([]);
+    setQuickAnswer(null);
+    setPreview(null);
+    setSelectedIndex(0);
+    await new Promise((r) => setTimeout(r, 80));
     await invoke("hide_window");
     setVisible(false);
     setClosing(false);
@@ -107,6 +129,7 @@ function App() {
 
   const handleBackdropClick = useCallback(() => {
     if (suppressBlurRef.current || closing) return;
+    suppressBlurRef.current = true;
     hideWindow();
   }, [hideWindow, closing]);
 
@@ -122,9 +145,23 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const q = searchBarRef.current?.getValue()?.trim() ?? "";
     const result = flatResults[selectedIndex] ?? null;
-    loadPreview(result);
-  }, [selectedIndex, flatResults, loadPreview]);
+
+    if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+
+    if (!q && !result?.id.startsWith("app:")) {
+      setPreview(null);
+      return;
+    }
+
+    previewDebounceRef.current = setTimeout(() => {
+      loadPreview(result);
+    }, 220);
+    return () => {
+      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+    };
+  }, [selectedIndex, flatResults, loadPreview, openSession]);
 
   useEffect(() => {
     const window = getCurrentWindow();
@@ -159,8 +196,6 @@ function App() {
       }, 150);
     });
 
-    performSearch("");
-
     return () => {
       unlistenFocus.then((fn) => fn());
       unlistenShown.then((fn) => fn());
@@ -170,27 +205,31 @@ function App() {
     };
   }, [openSpotlight, hideWindow, closing, resetHidden, visible, scheduleFocus]);
 
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => performSearch(query), 30);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query, performSearch]);
-
   const handleOpen = async (result: SearchResult) => {
-    await invoke("open_result", { id: result.id });
+    const query = searchBarRef.current?.getValue() ?? "";
+    await invoke("open_result", { id: result.id, query });
     await hideWindow();
   };
 
   const handleSubmit = async () => {
-    if (quickAnswer) {
-      await navigator.clipboard.writeText(quickAnswer.value);
-      await hideWindow();
+    const q = searchBarRef.current?.getValue() ?? "";
+    const result = await performSearch(q);
+    const answer = result?.quick_answer ?? quickAnswer;
+
+    if (answer) {
+      if (answer.value !== "Taxa indisponível" && answer.kind !== "time") {
+        await navigator.clipboard.writeText(answer.value);
+        await hideWindow();
+      }
       return;
     }
-    const result = flatResults[selectedIndex];
-    if (result) await handleOpen(result);
+
+    const results = result ? flattenSections(result.sections) : flatResults;
+    const selected = results[selectedIndex];
+    if (selected?.id.startsWith("recent:quick:")) {
+      return;
+    }
+    if (selected) await handleOpen(selected);
   };
 
   const handlePreviewAction = async (actionId: string) => {
@@ -207,11 +246,25 @@ function App() {
       return;
     }
 
-    await invoke("run_preview_action", { id: result.id, action: actionId });
-    if (actionId === "open") await hideWindow();
+    await invoke("run_preview_action", {
+      id: result.id,
+      action: actionId,
+      query: searchBarRef.current?.getValue() ?? "",
+    });
+    if (actionId === "open" || actionId === "copy_url") await hideWindow();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      setActionPaletteOpen((open) => !open);
+      return;
+    }
+    if (actionPaletteOpen && e.key === "Escape") {
+      e.preventDefault();
+      setActionPaletteOpen(false);
+      return;
+    }
     switch (e.key) {
       case "Escape":
         e.preventDefault();
@@ -247,24 +300,33 @@ function App() {
   };
 
   return (
-    <SpotlightShell
-      query={query}
-      onQueryChange={setQuery}
-      sections={sections}
-      flatResults={flatResults}
-      quickAnswer={quickAnswer}
-      selectedIndex={selectedIndex}
-      preview={preview}
-      visible={visible && !closing}
-      inputRef={inputRef}
-      onSelect={handleOpen}
-      onHover={setSelectedIndex}
-      onKeyDown={handleKeyDown}
-      onPreviewAction={handlePreviewAction}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onBackdropClick={handleBackdropClick}
-    />
+    <>
+      <SpotlightShell
+        searchBarRef={searchBarRef}
+        searchResetKey={openSession}
+        onSearch={performSearch}
+        sections={sections}
+        flatResults={flatResults}
+        quickAnswer={quickAnswer}
+        selectedIndex={selectedIndex}
+        preview={preview}
+        visible={visible && !closing}
+        closing={closing}
+        onSelect={handleOpen}
+        onHover={setSelectedIndex}
+        onKeyDown={handleKeyDown}
+        onPreviewAction={handlePreviewAction}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onBackdropClick={handleBackdropClick}
+      />
+      <ActionPalette
+        open={actionPaletteOpen}
+        actions={preview?.actions ?? []}
+        onSelect={handlePreviewAction}
+        onClose={() => setActionPaletteOpen(false)}
+      />
+    </>
   );
 }
 

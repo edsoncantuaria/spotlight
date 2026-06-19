@@ -7,6 +7,16 @@ pub enum ResultKind {
     File,
     Setting,
     Recent,
+    Web,
+    Bookmark,
+    Browser,
+    Contact,
+    Quicklink,
+    Snippet,
+    Script,
+    Clipboard,
+    Extension,
+    Window,
 }
 
 impl ResultKind {
@@ -16,6 +26,36 @@ impl ResultKind {
             Self::File => "file",
             Self::Setting => "setting",
             Self::Recent => "recent",
+            Self::Web => "web",
+            Self::Bookmark => "bookmark",
+            Self::Browser => "browser",
+            Self::Contact => "contact",
+            Self::Quicklink => "quicklink",
+            Self::Snippet => "snippet",
+            Self::Script => "script",
+            Self::Clipboard => "clipboard",
+            Self::Extension => "extension",
+            Self::Window => "window",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "app" => Some(Self::App),
+            "file" => Some(Self::File),
+            "setting" => Some(Self::Setting),
+            "recent" => Some(Self::Recent),
+            "web" => Some(Self::Web),
+            "bookmark" => Some(Self::Bookmark),
+            "browser" => Some(Self::Browser),
+            "contact" => Some(Self::Contact),
+            "quicklink" => Some(Self::Quicklink),
+            "snippet" => Some(Self::Snippet),
+            "script" => Some(Self::Script),
+            "clipboard" => Some(Self::Clipboard),
+            "extension" => Some(Self::Extension),
+            "window" => Some(Self::Window),
+            _ => None,
         }
     }
 }
@@ -64,12 +104,6 @@ pub fn make_id(kind: ResultKind, key: &str) -> String {
 
 pub fn parse_id(id: &str) -> Option<(ResultKind, &str)> {
     let (kind, key) = id.split_once(':')?;
-    let kind = match kind {
-        "app" => ResultKind::App,
-        "file" => ResultKind::File,
-        "setting" => ResultKind::Setting,
-        "recent" => ResultKind::Recent,
-        _ => return None,
-    };
+    let kind = ResultKind::from_str(kind)?;
     Some((kind, key))
 }

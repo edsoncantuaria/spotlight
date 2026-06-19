@@ -1,0 +1,9 @@
+{
+  "id": "store-hello",
+  "title": "Hello da Loja",
+  "icon": "face-smile",
+  "keywords": ["hello", "oi", "ola"],
+  "enabled": true,
+  "search_command": "search.sh",
+  "run_command": "run.sh"
+}

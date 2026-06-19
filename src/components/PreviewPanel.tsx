@@ -1,4 +1,4 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { resolveIconSrc, iconEmoji, resolveImageSrc } from "../lib/iconSrc";
 import type { PreviewData } from "../types";
 
 interface PreviewPanelProps {
@@ -11,20 +11,20 @@ export default function PreviewPanel({ preview, onAction }: PreviewPanelProps) {
     return null;
   }
 
+  const iconSrc = resolveIconSrc(preview.icon);
+
   return (
     <aside className="preview-panel">
       {preview.preview_image ? (
         <img
           className="preview-image"
-          src={convertFileSrc(preview.preview_image)}
+          src={resolveImageSrc(preview.preview_image)}
           alt=""
         />
+      ) : iconSrc ? (
+        <img className="preview-icon-large" src={iconSrc} alt="" />
       ) : preview.icon ? (
-        <img
-          className="preview-icon-large"
-          src={convertFileSrc(preview.icon)}
-          alt=""
-        />
+        <div className="preview-icon-emoji">{iconEmoji("app", preview.icon)}</div>
       ) : null}
 
       <h2 className="preview-title">{preview.title}</h2>

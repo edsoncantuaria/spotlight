@@ -6,7 +6,10 @@ interface QuickAnswerBarProps {
 
 export default function QuickAnswerBar({ answer }: QuickAnswerBarProps) {
   return (
-    <div className="quick-answer">
+    <div className={`quick-answer quick-answer-${answer.kind}`}>
+      <span className="quick-answer-badge">
+        {answer.kind === "currency" ? "💱" : answer.kind === "calculator" ? "🔢" : answer.kind === "time" ? "🕐" : "✦"}
+      </span>
       <span className="quick-answer-label">{answer.label}</span>
       <span className="quick-answer-value">{answer.value}</span>
       {answer.hint && (

@@ -2,6 +2,7 @@ mod calculator;
 mod conversion;
 mod currency;
 mod dictionary;
+mod local_time;
 mod timezone;
 
 use serde::Serialize;
@@ -14,6 +15,10 @@ pub struct QuickAnswer {
     pub hint: Option<String>,
 }
 
+pub fn warm_cache() {
+    currency::warm_cache();
+}
+
 pub fn try_answer(query: &str) -> Option<QuickAnswer> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
@@ -23,6 +28,7 @@ pub fn try_answer(query: &str) -> Option<QuickAnswer> {
     currency::try_convert(trimmed)
         .or_else(|| conversion::try_convert(trimmed))
         .or_else(|| calculator::try_evaluate(trimmed))
+        .or_else(|| local_time::try_local_time(trimmed))
         .or_else(|| dictionary::try_define(trimmed))
         .or_else(|| timezone::try_timezone(trimmed))
 }

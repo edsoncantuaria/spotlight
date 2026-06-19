@@ -1,9 +1,26 @@
-export type ResultKind = "app" | "file" | "setting" | "recent";
+export type ResultKind =
+  | "app"
+  | "file"
+  | "setting"
+  | "recent"
+  | "web"
+  | "bookmark"
+  | "browser"
+  | "contact"
+  | "quicklink"
+  | "snippet"
+  | "script"
+  | "clipboard"
+  | "extension"
+  | "window";
 
 export interface ClipboardItem {
   id: string;
   preview: string;
   subtitle: string;
+  content_type: string;
+  preview_image: string | null;
+  pinned: boolean;
 }
 
 export interface MatchRange {

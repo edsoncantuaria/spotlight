@@ -1,6 +1,4 @@
-import { useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import SearchBar from "./SearchBar";
+import SearchBar, { type SearchBarHandle } from "./SearchBar";
 import ResultSections from "./ResultSections";
 import PreviewPanel from "./PreviewPanel";
 import QuickAnswerBar from "./QuickAnswerBar";
@@ -12,15 +10,16 @@ import type {
 } from "../types";
 
 interface SpotlightShellProps {
-  query: string;
-  onQueryChange: (q: string) => void;
+  searchBarRef: React.RefObject<SearchBarHandle | null>;
+  searchResetKey: number;
+  onSearch: (q: string) => void;
   sections: ResultSection[];
   flatResults: SearchResult[];
   quickAnswer: QuickAnswer | null;
   selectedIndex: number;
   preview: PreviewData | null;
   visible: boolean;
-  inputRef: React.RefObject<HTMLInputElement | null>;
+  closing: boolean;
   onSelect: (result: SearchResult) => void;
   onHover: (index: number) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
@@ -31,15 +30,16 @@ interface SpotlightShellProps {
 }
 
 export default function SpotlightShell({
-  query,
-  onQueryChange,
+  searchBarRef,
+  searchResetKey,
+  onSearch,
   sections,
   flatResults,
   quickAnswer,
   selectedIndex,
   preview,
   visible,
-  inputRef,
+  closing,
   onSelect,
   onHover,
   onKeyDown,
@@ -48,78 +48,60 @@ export default function SpotlightShell({
   onDragEnd,
   onBackdropClick,
 }: SpotlightShellProps) {
-  const shellRef = useRef<HTMLDivElement>(null);
   const hasPreview = preview !== null;
+  const hasResults = sections.length > 0;
+  const expanded = hasResults || quickAnswer !== null || hasPreview;
+
+  if (!visible && !closing) return null;
 
   const handleOverlayPointerDown = (e: React.PointerEvent) => {
-    if (!visible) return;
-    if (shellRef.current?.contains(e.target as Node)) return;
+    if (!visible || closing) return;
+    if ((e.target as HTMLElement).closest(".spotlight-shell")) return;
     onBackdropClick();
   };
 
-  useEffect(() => {
-    if (!visible || !shellRef.current) return;
-
-    let rafId = 0;
-    const measure = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const el = shellRef.current;
-        if (!el) return;
-
-        const width = hasPreview ? 900 : 680;
-        const height = Math.min(Math.max(el.scrollHeight + 8, 120), 720);
-
-        invoke("resize_window", { width, height }).catch(() => {});
-      });
-    };
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(shellRef.current);
-    measure();
-
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(rafId);
-    };
-  }, [visible, sections, quickAnswer, hasPreview, query]);
-
   return (
     <div
-      className={`overlay ${visible ? "overlay-visible" : ""}`}
+      className={`overlay ${visible && !closing ? "overlay-visible" : "overlay-closing"}`}
       onPointerDown={handleOverlayPointerDown}
     >
       <div
-        ref={shellRef}
         className={`spotlight-shell ${hasPreview ? "with-preview" : ""} ${
-          visible ? "spotlight-in" : ""
-        }`}
+          visible && !closing ? "spotlight-in" : ""
+        } ${expanded ? "expanded" : "compact"}`}
       >
         <SearchBar
-          ref={inputRef}
-          value={query}
-          onChange={onQueryChange}
+          ref={searchBarRef}
+          resetKey={searchResetKey}
+          onSearch={onSearch}
           onKeyDown={onKeyDown}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
+          searchDebounceMs={150}
         />
 
-        {quickAnswer && <QuickAnswerBar answer={quickAnswer} />}
+        {expanded && (
+          <div className="spotlight-expandable">
+            {quickAnswer && <QuickAnswerBar answer={quickAnswer} />}
 
-        <div className="spotlight-body">
-          <div className="spotlight-results">
-            <ResultSections
-              sections={sections}
-              flatResults={flatResults}
-              selectedIndex={selectedIndex}
-              onSelect={onSelect}
-              onHover={onHover}
-            />
+            {(hasResults || hasPreview) && (
+              <div className="spotlight-body">
+                <div className="spotlight-results">
+                  <ResultSections
+                    sections={sections}
+                    flatResults={flatResults}
+                    selectedIndex={selectedIndex}
+                    onSelect={onSelect}
+                    onHover={onHover}
+                  />
+                </div>
+                {hasPreview && (
+                  <PreviewPanel preview={preview} onAction={onPreviewAction} />
+                )}
+              </div>
+            )}
           </div>
-          {hasPreview && (
-            <PreviewPanel preview={preview} onAction={onPreviewAction} />
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

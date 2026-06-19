@@ -1,3 +1,4 @@
+import { resolveImageSrc } from "./lib/imageSrc";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -7,8 +8,12 @@ import { scheduleWindowFocus } from "./lib/focusSearch";
 import type { ClipboardItem } from "./types";
 import "./styles/overlay.css";
 
+type ClipboardFilter = "all" | "text" | "image" | "pinned";
+
 export default function ClipboardApp() {
   const [items, setItems] = useState<ClipboardItem[]>([]);
+  const [filter, setFilter] = useState<ClipboardFilter>("all");
+  const [stackCount, setStackCount] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -26,12 +31,18 @@ export default function ClipboardApp() {
   }, []);
 
   const loadItems = useCallback(async () => {
-    const data = await invoke<ClipboardItem[]>("get_clipboard_history", {
-      limit: 10,
-    });
+    const cfg = await invoke<{ clipboard_limit: number }>("get_config");
+    const [data, count] = await Promise.all([
+      invoke<ClipboardItem[]>("get_clipboard_history", {
+        limit: cfg.clipboard_limit,
+        filter,
+      }),
+      invoke<number>("get_clipboard_stack_count"),
+    ]);
     setItems(data);
+    setStackCount(count);
     setSelectedIndex(0);
-  }, []);
+  }, [filter]);
 
   const resetHidden = useCallback(() => {
     cancelFocusRetriesRef.current?.();
@@ -56,7 +67,6 @@ export default function ClipboardApp() {
     setClosing(false);
     setVisible(true);
     setOpenSession((n) => n + 1);
-    setSelectedIndex(0);
     loadItems();
     scheduleFocus();
     setTimeout(() => {
@@ -70,7 +80,7 @@ export default function ClipboardApp() {
     return () => cancelFocusRetriesRef.current?.();
   }, [visible, closing, openSession, scheduleFocus]);
 
-  const selectItem = useCallback(
+  const copyItem = useCallback(
     async (index: number) => {
       const item = items[index];
       if (!item) return;
@@ -79,6 +89,29 @@ export default function ClipboardApp() {
     },
     [items, hideWindow],
   );
+
+  const togglePin = useCallback(
+    async (id: string) => {
+      await invoke("toggle_clipboard_pin", { id });
+      await loadItems();
+    },
+    [loadItems],
+  );
+
+  const addToStack = useCallback(
+    async (index: number) => {
+      const item = items[index];
+      if (!item) return;
+      const count = await invoke<number>("add_clipboard_to_stack", { id: item.id });
+      setStackCount(count);
+    },
+    [items],
+  );
+
+  const pasteStack = useCallback(async () => {
+    await invoke("paste_clipboard_stack");
+    await hideWindow();
+  }, [hideWindow]);
 
   useEffect(() => {
     const window = getCurrentWindow();
@@ -114,28 +147,8 @@ export default function ClipboardApp() {
   }, [openClipboard, hideWindow, closing, resetHidden, visible, scheduleFocus]);
 
   useEffect(() => {
-    if (!visible || !shellRef.current) return;
-
-    let rafId = 0;
-    const measure = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const el = shellRef.current;
-        if (!el) return;
-        const height = Math.min(Math.max(el.scrollHeight + 8, 160), 620);
-        invoke("resize_window", { width: 680, height }).catch(() => {});
-      });
-    };
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(shellRef.current);
-    measure();
-
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(rafId);
-    };
-  }, [visible, items]);
+    if (visible) loadItems();
+  }, [visible, filter, loadItems]);
 
   useEffect(() => {
     if (!visible) return;
@@ -156,18 +169,33 @@ export default function ClipboardApp() {
           break;
         case "Enter":
           e.preventDefault();
-          selectItem(selectedIndex);
+          if (e.shiftKey) {
+            addToStack(selectedIndex);
+          } else {
+            copyItem(selectedIndex);
+          }
           break;
+        case "p":
+          if (e.ctrlKey) {
+            e.preventDefault();
+            const item = items[selectedIndex];
+            if (item) togglePin(item.id);
+          }
+          break;
+      }
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        pasteStack();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [visible, items, selectedIndex, hideWindow, selectItem]);
+  }, [visible, items, selectedIndex, hideWindow, copyItem, addToStack, togglePin, pasteStack]);
 
   const beginDrag = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest("button, .result-item")) return;
+    if ((e.target as HTMLElement).closest("button, .result-item, .clipboard-filters")) return;
     suppressBlurRef.current = true;
     void getCurrentWindow().startDragging();
   };
@@ -177,6 +205,13 @@ export default function ClipboardApp() {
     if (shellRef.current?.contains(e.target as Node)) return;
     hideWindow();
   };
+
+  const filters: { id: ClipboardFilter; label: string }[] = [
+    { id: "all", label: "Tudo" },
+    { id: "text", label: "Texto" },
+    { id: "image", label: "Imagens" },
+    { id: "pinned", label: "Fixados" },
+  ];
 
   return (
     <div
@@ -215,9 +250,27 @@ export default function ClipboardApp() {
           </span>
         </div>
 
+        <div className="clipboard-filters">
+          {filters.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className={`clipboard-filter-btn ${filter === f.id ? "active" : ""}`}
+              onClick={() => setFilter(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+          {stackCount > 0 && (
+            <button type="button" className="clipboard-stack-btn" onClick={pasteStack}>
+              Colar stack ({stackCount})
+            </button>
+          )}
+        </div>
+
         <div className="clipboard-list">
           {items.length === 0 ? (
-            <div className="no-results">Nenhuma cópia recente</div>
+            <div className="no-results">Nenhuma cópia neste filtro</div>
           ) : (
             <ul className="result-list">
               {items.map((item, index) => (
@@ -226,13 +279,39 @@ export default function ClipboardApp() {
                   ref={index === selectedIndex ? setSelectedRef : null}
                   className={`result-item ${index === selectedIndex ? "selected" : ""}`}
                   onMouseEnter={() => setSelectedIndex(index)}
-                  onClick={() => selectItem(index)}
+                  onClick={() => copyItem(index)}
                 >
-                  <div className="result-icon result-icon-fallback">📋</div>
+                  <div className="result-icon result-icon-fallback">
+                    {item.preview_image ? (
+                      <img
+                        src={resolveImageSrc(item.preview_image)}
+                        alt=""
+                        className="clipboard-thumb"
+                      />
+                    ) : item.content_type === "image" ? (
+                      "🖼️"
+                    ) : (
+                      "📋"
+                    )}
+                  </div>
                   <div className="result-text">
-                    <span className="result-title">{item.preview}</span>
+                    <span className="result-title">
+                      {item.pinned && <span className="pin-badge">📌 </span>}
+                      {item.preview}
+                    </span>
                     <span className="result-subtitle">{item.subtitle}</span>
                   </div>
+                  <button
+                    type="button"
+                    className="clipboard-action-btn"
+                    title="Fixar"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePin(item.id);
+                    }}
+                  >
+                    {item.pinned ? "📌" : "📍"}
+                  </button>
                 </li>
               ))}
             </ul>
@@ -240,9 +319,8 @@ export default function ClipboardApp() {
         </div>
 
         <div className="clipboard-footer">
-          <span>↑↓ navegar</span>
-          <span>Enter copiar</span>
-          <span>Esc fechar</span>
+          <span>Enter copiar · Shift+Enter stack · Ctrl+P fixar</span>
+          <span>Ctrl+Shift+V colar stack</span>
         </div>
       </div>
     </div>

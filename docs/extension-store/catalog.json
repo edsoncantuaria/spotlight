@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "extensions": [
+    {
+      "id": "example-hello",
+      "title": "Hello (exemplo oficial)",
+      "description": "Extensão de demonstração incluída localmente.",
+      "repo": "edsoncantuaria/spotlight",
+      "path": "docs/extension-store/example-hello",
+      "builtin": true
+    },
+    {
+      "id": "spotlight-git",
+      "title": "Git Enhanced",
+      "description": "Comandos git extras para repositórios locais.",
+      "repo": "edsoncantuaria/spotlight-extensions-git",
+      "version": "0.1.0"
+    },
+    {
+      "id": "spotlight-weather",
+      "title": "Clima",
+      "description": "Previsão do tempo via wttr.in.",
+      "repo": "edsoncantuaria/spotlight-extensions-weather",
+      "version": "0.1.0"
+    }
+  ]
+}

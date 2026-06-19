@@ -1,4 +1,4 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { resolveIconSrc, iconEmoji } from "../lib/iconSrc";
 import HighlightText from "./HighlightText";
 import { useScrollSelectedItem } from "../lib/useScrollSelectedItem";
 import type { ResultSection, SearchResult } from "../types";
@@ -12,11 +12,12 @@ interface ResultSectionsProps {
 }
 
 function ResultIcon({ result }: { result: SearchResult }) {
-  if (result.icon && result.kind !== "file") {
+  const src = resolveIconSrc(result.icon);
+  if (src) {
     return (
       <img
         className="result-icon"
-        src={convertFileSrc(result.icon)}
+        src={src}
         alt=""
         onError={(e) => {
           (e.target as HTMLImageElement).style.display = "none";
@@ -27,14 +28,13 @@ function ResultIcon({ result }: { result: SearchResult }) {
 
   return (
     <div className="result-icon result-icon-fallback">
-      {result.kind === "file" ? "📄" : result.kind === "setting" ? "⚙️" : "▢"}
+      {iconEmoji(result.kind, result.icon)}
     </div>
   );
 }
 
 export default function ResultSections({
   sections,
-  flatResults,
   selectedIndex,
   onSelect,
   onHover,
@@ -42,7 +42,11 @@ export default function ResultSections({
   const setSelectedRef = useScrollSelectedItem<HTMLLIElement>(selectedIndex);
 
   if (sections.length === 0) {
-    return null;
+    return (
+      <div className="empty-hint">
+        <span>Digite para buscar apps, arquivos, conversões…</span>
+      </div>
+    );
   }
 
   let globalIndex = 0;
@@ -61,6 +65,7 @@ export default function ResultSections({
                   key={result.id}
                   ref={isSelected ? setSelectedRef : null}
                   className={`result-item ${isSelected ? "selected" : ""}`}
+                  style={{ animationDelay: `${Math.min(index, 12) * 25}ms` }}
                   onMouseEnter={() => onHover(index)}
                   onClick={() => onSelect(result)}
                 >
@@ -79,9 +84,6 @@ export default function ResultSections({
           </ul>
         </div>
       ))}
-      {flatResults.length === 0 && (
-        <div className="no-results">Nenhum resultado</div>
-      )}
     </div>
   );
 }

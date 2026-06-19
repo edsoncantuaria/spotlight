@@ -108,11 +108,7 @@ impl HistoryDb {
 
         rows.filter_map(|r| r.ok())
             .map(|(id, kind, title, subtitle, icon)| {
-                let kind = match kind.as_str() {
-                    "file" => ResultKind::File,
-                    "setting" => ResultKind::Setting,
-                    _ => ResultKind::App,
-                };
+                let kind = ResultKind::from_str(&kind).unwrap_or(ResultKind::App);
                 SearchResult {
                     id: id.clone(),
                     kind,

@@ -1,16 +1,83 @@
-import { forwardRef, useEffect } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useDebouncedCallbackWithFlush } from "../lib/useDebouncedCallback";
+
+export interface SearchBarHandle {
+  focus: () => void;
+  getValue: () => string;
+  setValue: (value: string) => void;
+  clear: () => void;
+}
 
 interface SearchBarProps {
-  value: string;
-  onChange: (value: string) => void;
+  onSearch: (value: string) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
+  resetKey: number;
+  searchDebounceMs?: number;
 }
 
-const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
-  ({ value, onChange, onKeyDown, onDragStart, onDragEnd }, ref) => {
+const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
+  (
+    {
+      onSearch,
+      onKeyDown,
+      onDragStart,
+      onDragEnd,
+      resetKey,
+      searchDebounceMs = 300,
+    },
+    ref,
+  ) => {
+    const inputRef = useRef<HTMLInputElement>(null);
+    const [value, setValue] = useState("");
+    const { debounced: debouncedSearch, flush: flushSearch } =
+      useDebouncedCallbackWithFlush(onSearch, searchDebounceMs);
+
+    useImperativeHandle(ref, () => ({
+      focus: () => inputRef.current?.focus({ preventScroll: true }),
+      getValue: () => inputRef.current?.value ?? "",
+      setValue: (next: string) => {
+        setValue(next);
+        flushSearch(next);
+      },
+      clear: () => {
+        setValue("");
+        flushSearch("");
+      },
+    }));
+
+    useEffect(() => {
+      setValue("");
+      flushSearch("");
+      requestAnimationFrame(() => {
+        inputRef.current?.focus({ preventScroll: true });
+        requestAnimationFrame(() => {
+          inputRef.current?.focus({ preventScroll: true });
+        });
+      });
+    }, [resetKey, flushSearch]);
+
+    useEffect(() => {
+      const onSetQuery = (e: Event) => {
+        const detail = (e as CustomEvent<string>).detail ?? "";
+        setValue(detail);
+        flushSearch(detail);
+        requestAnimationFrame(() =>
+          inputRef.current?.focus({ preventScroll: true }),
+        );
+      };
+      window.addEventListener("spotlight-set-query", onSetQuery);
+      return () => window.removeEventListener("spotlight-set-query", onSetQuery);
+    }, [flushSearch]);
+
     const beginDrag = (e: React.PointerEvent) => {
       if (e.button !== 0) return;
       const target = e.target as HTMLElement;
@@ -28,6 +95,12 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
         window.removeEventListener("pointercancel", endDrag);
       };
     }, [onDragEnd]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const next = e.target.value;
+      setValue(next);
+      debouncedSearch(next);
+    };
 
     return (
       <div
@@ -52,12 +125,12 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
           <path d="m21 21-4.35-4.35" />
         </svg>
         <input
-          ref={ref}
+          ref={inputRef}
           type="text"
           className="search-input"
-          placeholder="Spotlight Search"
+          placeholder="Buscar ou digite > para comandos…"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={handleChange}
           onKeyDown={onKeyDown}
           onPointerDown={(e) => e.stopPropagation()}
           spellCheck={false}

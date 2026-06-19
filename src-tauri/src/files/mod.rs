@@ -18,11 +18,19 @@ const SKIP_DIRS: &[&str] = &[
 
 pub fn search_files(query: &str, history: &HistoryDb, limit: usize) -> Vec<SearchResult> {
     let query = query.trim();
-    if query.is_empty() {
+    if query.len() < 2 {
         return Vec::new();
     }
 
-    let paths = search_with_fd(query, limit * 3).unwrap_or_else(|| search_with_walk(query, limit * 3));
+    let indexed = crate::file_index::search_index(query, history, limit);
+    if indexed.len() >= limit {
+        return indexed;
+    }
+
+    let remaining = limit - indexed.len();
+    let mut paths = search_with_fd(query, remaining * 2).unwrap_or_else(|| search_with_walk(query, remaining * 2));
+    let existing: std::collections::HashSet<String> = indexed.iter().map(|r| r.id.clone()).collect();
+    paths.retain(|p| !existing.contains(&make_id(ResultKind::File, &p.to_string_lossy())));
 
     let matcher = SkimMatcherV2::default();
     let mut results: Vec<SearchResult> = paths
@@ -46,55 +54,80 @@ pub fn search_files(query: &str, history: &HistoryDb, limit: usize) -> Vec<Searc
         .collect();
 
     ranking::sort_results(&mut results);
-    results.into_iter().take(limit).collect()
+    let mut combined = indexed;
+    combined.extend(results.into_iter().take(remaining));
+    combined
 }
 
 fn search_with_fd(query: &str, limit: usize) -> Option<Vec<PathBuf>> {
     let home = dirs::home_dir()?;
-    let output = Command::new("fd")
-        .args([
-            "-i",
-            query,
-            "--type",
-            "f",
-            "--max-results",
-            &limit.to_string(),
-            "--exclude",
-            ".git",
-            "--exclude",
-            "node_modules",
-            "--exclude",
-            "target",
-        ])
-        .arg(&home)
-        .output()
-        .ok()?;
+    let mut results = Vec::new();
 
-    if !output.status.success() {
-        return None;
+    for dir in file_search_roots(&home) {
+        if results.len() >= limit {
+            break;
+        }
+        let remaining = limit - results.len();
+        let output = Command::new("fd")
+            .args([
+                "-i",
+                query,
+                "--type",
+                "f",
+                "--max-results",
+                &remaining.to_string(),
+                "--exclude",
+                ".git",
+                "--exclude",
+                "node_modules",
+                "--exclude",
+                "target",
+                "--exclude",
+                ".cache",
+            ])
+            .arg(&dir)
+            .output()
+            .ok()?;
+
+        if output.status.success() {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let p = PathBuf::from(line.trim());
+                if p.exists() {
+                    results.push(p);
+                }
+            }
+        }
     }
 
-    Some(
-        String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter_map(|line| {
-                let p = PathBuf::from(line.trim());
-                if p.exists() { Some(p) } else { None }
-            })
-            .collect(),
-    )
+    if results.is_empty() {
+        None
+    } else {
+        Some(results)
+    }
+}
+
+fn file_search_roots(home: &Path) -> Vec<PathBuf> {
+    [
+        "Documents",
+        "Downloads",
+        "Desktop",
+        "Pictures",
+        "Music",
+        "Videos",
+        "Projects",
+        "Projetos",
+    ]
+    .into_iter()
+    .map(|sub| home.join(sub))
+    .filter(|p| p.exists())
+    .collect()
 }
 
 fn search_with_walk(query: &str, limit: usize) -> Vec<PathBuf> {
     let query_lower = query.to_lowercase();
     let mut roots = Vec::new();
     if let Some(home) = dirs::home_dir() {
-        for sub in ["Documents", "Downloads", "Desktop"] {
-            let p = home.join(sub);
-            if p.exists() {
-                roots.push(p);
-            }
-        }
+        roots = file_search_roots(&home);
     }
 
     let mut results = Vec::new();

@@ -2,7 +2,7 @@ import type { RefObject } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
-const FOCUS_DELAYS = [0, 16, 50, 100, 200, 400, 600, 800, 1000, 1200];
+const FOCUS_DELAYS = [0, 50, 150, 400];
 
 export async function focusWindow(element?: HTMLElement | null): Promise<void> {
   try {
