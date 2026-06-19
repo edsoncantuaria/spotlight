@@ -33,7 +33,7 @@ pub fn run() {
     let state = SpotlightState::new();
     let clipboard_db = state.clipboard.clone_for_watcher();
 
-    let _ = config::ensure_autostart();
+    let _ = config::sync_autostart();
     file_index::start_file_watcher();
     clipboard::start_watcher(clipboard_db);
     std::thread::spawn(|| crate::quick_answers::warm_cache());

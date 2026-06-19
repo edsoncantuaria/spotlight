@@ -38,6 +38,8 @@ pub struct AppConfig {
     pub ai_api_url: Option<String>,
     #[serde(default)]
     pub extension_store_url: Option<String>,
+    #[serde(default = "default_launch_at_login")]
+    pub launch_at_login: bool,
 }
 
 fn default_theme() -> String {
@@ -81,6 +83,10 @@ fn default_clipboard_shortcut() -> String {
     "Ctrl+Alt+C".to_string()
 }
 
+fn default_launch_at_login() -> bool {
+    true
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -100,6 +106,7 @@ impl Default for AppConfig {
             ai_ollama_url: None,
             ai_api_url: None,
             extension_store_url: None,
+            launch_at_login: default_launch_at_login(),
         }
     }
 }
@@ -158,7 +165,15 @@ pub fn save(config: &AppConfig) -> Result<(), String> {
     Ok(())
 }
 
-pub fn ensure_autostart() -> Result<(), String> {
+pub fn sync_autostart() -> Result<(), String> {
+    if load().launch_at_login {
+        enable_autostart()
+    } else {
+        disable_autostart()
+    }
+}
+
+fn enable_autostart() -> Result<(), String> {
     let Some(config_dir) = dirs::config_dir() else {
         return Ok(());
     };
@@ -178,6 +193,17 @@ pub fn ensure_autostart() -> Result<(), String> {
     };
     if needs_write {
         fs::write(desktop, content).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn disable_autostart() -> Result<(), String> {
+    let Some(config_dir) = dirs::config_dir() else {
+        return Ok(());
+    };
+    let desktop = config_dir.join("autostart").join("spotlight.desktop");
+    if desktop.exists() {
+        fs::remove_file(desktop).map_err(|e| e.to_string())?;
     }
     Ok(())
 }

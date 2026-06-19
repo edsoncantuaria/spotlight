@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.3] - 2026-06-18
+
+### Corrigido
+- Spotlight voltava a fechar sozinho ao abrir (atalho e bandeja)
+- Janelas de configurações, loja, extensões e guia registradas no app (funcionam no `.deb`)
+- Loja usa catálogo embutido quando offline; exemplo builtin instala corretamente
+
+### Adicionado
+- Configuração **Abrir com o sistema** (checkbox nas Settings)
+
 ## [1.0.2] - 2026-06-18
 
 ### Corrigido
@@ -34,6 +44,7 @@
 - Extensão AI desabilitada por padrão (sem API key necessária)
 - Testado em Ubuntu/Debian; Wayland e X11 com dependências opcionais
 
+[1.0.3]: https://github.com/edsoncantuaria/spotlight/releases/tag/v1.0.3
 [1.0.2]: https://github.com/edsoncantuaria/spotlight/releases/tag/v1.0.2
 [1.0.1]: https://github.com/edsoncantuaria/spotlight/releases/tag/v1.0.1
 [1.0.0]: https://github.com/edsoncantuaria/spotlight/releases/tag/v1.0.0

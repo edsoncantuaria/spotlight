@@ -173,6 +173,7 @@ function App() {
       }
       if (suppressBlurRef.current || closing) return;
       if (Date.now() < openingGraceUntilRef.current) return;
+      if (!visible) return;
       const isVisible = await window.isVisible();
       if (!isVisible) {
         resetHidden();

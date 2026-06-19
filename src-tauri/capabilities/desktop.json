@@ -6,7 +6,8 @@
     "linux"
   ],
   "windows": [
-    "main"
+    "main",
+    "clipboard"
   ],
   "permissions": [
     "global-shortcut:default"

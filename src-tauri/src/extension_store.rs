@@ -5,6 +5,10 @@ use std::process::Command;
 
 use crate::paths;
 
+const EMBEDDED_CATALOG: &str =
+    include_str!("../../docs/extension-store/catalog.json");
+const EMBEDDED_GUIDE: &str = include_str!("../../docs/extension-store/GUIA-EXTENSOES.md");
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreExtension {
     pub id: String,
@@ -33,19 +37,8 @@ pub fn list_store() -> Result<Vec<StoreExtension>, String> {
 
     match fetch_remote_catalog(&url) {
         Ok(items) if !items.is_empty() => Ok(items),
-        _ => {
-            let local = local_catalog_path();
-            if local.exists() {
-                parse_catalog_file(local.to_string_lossy().as_ref())
-            } else {
-                Err("Catálogo indisponível (rede e arquivo local)".into())
-            }
-        }
+        _ => parse_catalog_json(EMBEDDED_CATALOG),
     }
-}
-
-fn local_catalog_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/extension-store/catalog.json")
 }
 
 fn fetch_remote_catalog(url: &str) -> Result<Vec<StoreExtension>, String> {
@@ -121,21 +114,6 @@ pub fn install_from_store(ext: &StoreExtension) -> Result<String, String> {
 }
 
 fn install_builtin_example(ext: &StoreExtension) -> Result<String, String> {
-    let sub = ext
-        .path
-        .as_deref()
-        .unwrap_or("docs/extension-store/example-hello");
-
-    let candidates = [
-        PathBuf::from(sub),
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../{sub}")),
-    ];
-
-    let source = candidates
-        .iter()
-        .find(|p| p.join("manifest.json").exists())
-        .ok_or_else(|| "Exemplo builtin não encontrado no repositório".to_string())?;
-
     let Some(extensions_dir) = paths::extensions_dir() else {
         return Err("Diretório de extensões indisponível".into());
     };
@@ -146,9 +124,15 @@ fn install_builtin_example(ext: &StoreExtension) -> Result<String, String> {
         return Ok(dest.to_string_lossy().to_string());
     }
 
-    copy_dir_recursive(source, &dest)?;
-    make_scripts_executable(&dest);
-    Ok(dest.to_string_lossy().to_string())
+    crate::extensions::user::write_example_extension();
+    let example = extensions_dir.join("example-hello");
+    if example.exists() && ext.id != "example-hello" {
+        copy_dir_recursive(&example, &dest)?;
+    } else if example.exists() {
+        return Ok(example.to_string_lossy().to_string());
+    }
+
+    Err("Exemplo builtin não encontrado".into())
 }
 
 fn install_via_archive(repo: &str, dest: &PathBuf) -> Result<String, String> {
@@ -228,10 +212,5 @@ pub fn guide_path() -> Option<PathBuf> {
 pub fn read_guide() -> String {
     guide_path()
         .and_then(|p| fs::read_to_string(p).ok())
-        .unwrap_or_else(|| {
-            fs::read_to_string(
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/extension-store/GUIA-EXTENSOES.md"),
-            )
-            .unwrap_or_else(|_| "Guia de extensões não encontrado.".into())
-        })
+        .unwrap_or_else(|| EMBEDDED_GUIDE.to_string())
 }

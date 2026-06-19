@@ -110,6 +110,7 @@ pub fn save_config(
     state: State<'_, SpotlightState>,
 ) -> Result<(), String> {
     crate::config::save(&config)?;
+    crate::config::sync_autostart()?;
     state.reload_config();
     setup_global_shortcut(&app).map_err(|e| e.to_string())?;
     Ok(())

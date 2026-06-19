@@ -19,6 +19,7 @@ interface AppConfig {
   ai_ollama_url: string | null;
   ai_api_url: string | null;
   extension_store_url: string | null;
+  launch_at_login: boolean;
 }
 
 export default function SettingsApp() {
@@ -58,6 +59,20 @@ export default function SettingsApp() {
           Fechar
         </button>
       </header>
+
+      <section className="settings-section">
+        <h2>Sistema</h2>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={config.launch_at_login ?? true}
+            onChange={(e) =>
+              setConfig({ ...config, launch_at_login: e.target.checked })
+            }
+          />
+          Abrir com o sistema
+        </label>
+      </section>
 
       <section className="settings-section">
         <h2>Aparência</h2>
